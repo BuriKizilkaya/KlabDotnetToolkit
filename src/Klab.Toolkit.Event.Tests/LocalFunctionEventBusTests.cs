@@ -1,4 +1,4 @@
-﻿using System;
+﻿using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -30,7 +30,7 @@ public class LocalFunctionEventBusTests
     public async Task SimpleEventPublishTest()
     {
         // arrange
-        Result<Guid> id = _eventBus.Subscribe<TestEvent>(IncreaseCounterAsync);
+        _eventBus.Subscribe<TestEvent>(IncreaseCounterAsync);
 
         // act
         await _eventBus.PublishAsync(new TestEvent());
@@ -38,14 +38,15 @@ public class LocalFunctionEventBusTests
 
         // assert
         _counter.Should().Be(1);
-        id.Should().NotBe(Guid.Empty);
+        _eventBus.GetLocalEventHandlers().Count.Should().Be(1);
+        _eventBus.GetLocalEventHandlers().First().Value.Count.Should().Be(1);
     }
 
     [Fact]
     public async Task SubscribeUnsubscribeTest()
     {
         // arrange
-        Result<Guid> id = _eventBus.Subscribe<TestEvent>(IncreaseCounterAsync);
+        _eventBus.Subscribe<TestEvent>(IncreaseCounterAsync);
 
         // act
         await _eventBus.PublishAsync(new TestEvent());
@@ -55,7 +56,7 @@ public class LocalFunctionEventBusTests
         _counter.Should().Be(1);
 
         // act
-        _eventBus.Unsuscribe<TestEvent>(id.Value);
+        _eventBus.Unsubscribe<TestEvent>(IncreaseCounterAsync);
         await _eventBus.PublishAsync(new TestEvent());
         await Task.Delay(1000); // to be processed
 
@@ -63,9 +64,35 @@ public class LocalFunctionEventBusTests
         _counter.Should().Be(1);
     }
 
+    [Fact]
+    public async Task Subscribe_ShouldRegisterTwoDifferentMethods()
+    {
+        // arrange
+        _eventBus.Subscribe<TestEvent>(IncreaseCounterAsync);
+        _eventBus.Subscribe<TestEvent>(IncreaseCounterAsync2);
+
+        // act
+        await _eventBus.PublishAsync(new TestEvent());
+        await Task.Delay(1000); // to be processed
+        _eventBus.Unsubscribe<TestEvent>(IncreaseCounterAsync);
+        _eventBus.Unsubscribe<TestEvent>(IncreaseCounterAsync2);
+
+        // assert
+        _counter.Should().Be(3);
+        _eventBus.GetLocalEventHandlers().Count.Should().Be(1);
+        _eventBus.GetLocalEventHandlers().First().Value.Count.Should().Be(0);
+    }
+
     private Task<IResult> IncreaseCounterAsync(TestEvent @event, CancellationToken cancellationToken)
     {
         _counter++;
+        IResult res = Result.Success();
+        return Task.FromResult(res);
+    }
+
+    private Task<IResult> IncreaseCounterAsync2(TestEvent @event, CancellationToken cancellationToken)
+    {
+        _counter += 2;
         IResult res = Result.Success();
         return Task.FromResult(res);
     }
